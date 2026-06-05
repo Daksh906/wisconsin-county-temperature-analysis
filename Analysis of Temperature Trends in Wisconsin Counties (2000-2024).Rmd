@@ -1,0 +1,201 @@
+---
+title: "Analysis of Temperature Trends in Wisconsin Counties (2000-2024)"
+author: 
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+```
+
+## **Introduction**
+
+Stemming from decades ago, climate change has been a worldwide topic of controversy. Climate change has found its platform through politics, activists, constituents of highly affected areas, and ultimately every individual, but in recent years has come to the forefront due to its increasing severity. The way the temperatures have been changing over the past years is a grave indicator of climate change. In the state we all know and call home during the school year, the climate has shifted compared to earlier years.
+Taking this into consideration, we want to highlight the trend in temperature change over the past couple of years when climate change has become an increasingly popular topic. The question we aim to answer is: “How has the annual temperature from 2000 to 2024 changed across two popular Wisconsin counties; Milwaukee and Dane county?"
+We have found strong evidence that the average annual temperature in Milwaukee has increased from 2000 to 2024 while it has slightly decreased in Dane County. However, statistical testing suggests the difference in these rates of change is not significant at the 0.05 level.
+
+## **Background**
+
+### **Data Sources**
+The data used for this project comes from Tutiempo Network, S.L., an online climate data provider that compiles meteorological information from national and international weather stations.
+
+* **Milwaukee station:** https://en.tutiempo.net/climate/ws-726405.html
+- **Dane county station:** https://en.tutiempo.net/climate/ws-726410.html
+
+Tutiempo sources its data primarily from the NOAA Global Surface Summary of the Day (GSOD) and other official meteorological archives. The platform aggregates daily measurements recorded by weather stations, which are then processed into monthly and annual summaries. Each station records temperature, precipitation, wind speed, and related atmospheric variables using standardized instruments consistent with World Meteorological Organization (WMO) protocols. The reported averages are computed from daily temperature readings collected continuously throughout each year.
+
+### **Variables**
+* **Year:** Calendar year of the observation period (2000–2024). <br>
+* **City:** The reporting weather station location (Milwaukee and Dane County). <br>
+* **Average Annual Temperature (°C):** The mean of daily temperature readings for that year at each city’s station. This is the primary variable of interest used to measure climate trends.
+
+### **Data Structure and Sample Size**
+* **Single Row Representation:** One row in the dataset represents one city-year combination—for example, the average annual temperature recorded in Milwaukee, WI for the year 2015.
+* **Sample Size:** With two counties over 25 years (2000–2024 inclusive), the dataset contains approximately 50 observations (2 × 25 = 50 rows).
+* **Unusual Factors:** In both our Milwaukee and Dane County data set, there are two annual temperature values missing in 2002 and 2005.
+
+```{r}
+# Import and Clean Data
+dane <- read_csv("../data/dane_weather.csv")
+milwaukee <- read_csv("../data/milwaukee_weather.csv")
+
+# Combine for visualization and analysis
+combined <- bind_rows(
+  dane %>% mutate(City = "Dane County"),
+  milwaukee %>% mutate(City = "Milwaukee")
+)
+
+# Remove missing values if necessary (though models handle NA usually)
+combined <- combined %>% filter(!is.na(Temperature))
+```
+
+## **Visualization**
+
+We use a Scatter Plot to compare the temperature averages from 2000 to 2024 in Milwaukee and Dane County. This graph evaluates the impact of climate change in Wisconsin depending on the trend of cooling or heating found.
+
+* **X-axis:** Year (2000 to 2024). <br>
+* **Y-axis:** Average Annual Temperature (°C). <br>
+* **Legend:** Color coded to distinguish between Milwaukee and Dane County. <br>
+* **Trend Lines:** Dashed lines represent the linear regression fit for each city. <br>
+
+```{r, echo=FALSE}
+ggplot(combined, aes(x = Year, y = Temperature, color = City)) +
+  geom_point(alpha = 0.6) +
+  geom_line(alpha = 0.3) +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed") +
+  labs(
+    title = "Average Annual Temperature: Madison (Dane County) vs Milwaukee (2000–2024)",
+    y = "Temperature (°C)"
+  ) +
+  theme_minimal()
+```
+
+## **Statistical Analysis**
+
+We employ simple linear regression to examine how the continuous explanatory variable (Year) influences the continuous response variable (Average Annual Temperature).
+
+## **1. Individual Linear Models (Manual vs LM)**
+We first analyze the trends for each county independently.
+
+### **Dane County**
+```{r}
+# DANE COUNTY
+x_d = dane$Year
+y_d = dane$Temperature
+
+# Manual calculation of coefficients
+r_d = cor(x_d,y_d, use = "complete.obs")
+beta_1_hat_d = r_d*(sd(y_d, na.rm=TRUE)/sd(x_d, na.rm=TRUE))
+beta_0_hat_d = mean(y_d, na.rm=TRUE) - beta_1_hat_d * mean(x_d, na.rm=TRUE)
+c(Slope = beta_1_hat_d, Intercept = beta_0_hat_d)
+
+# Linear Model
+model_dane <- lm(Temperature ~ Year, data = dane)
+summary(model_dane)
+```
+
+### **Milwaukee**
+```{r}
+# MILWAUKEE
+x_m = milwaukee$Year
+y_m = milwaukee$Temperature
+
+# Manual calculation of coefficients
+r_m = cor(x_m,y_m, use = "complete.obs")
+beta_1_hat_m = r_m*(sd(y_m, na.rm=TRUE)/sd(x_m, na.rm=TRUE))
+beta_0_hat_m = mean(y_m, na.rm=TRUE) - beta_1_hat_m * mean(x_m, na.rm=TRUE)
+c(Slope = beta_1_hat_m, Intercept = beta_0_hat_m)
+
+# Linear Model
+model_milwaukee <- lm(Temperature ~ Year, data = milwaukee)
+summary(model_milwaukee)
+```
+
+## **2. Residual Analysis**
+To ensure our linear models are valid, we check the assumptions of linearity, normality, and constant variance.
+**Dane County Residuals:**
+```{r}
+dane_r_p <- ggplot(dane %>% filter(!is.na(Temperature)), aes(Year, y = resid(model_dane))) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  labs(title = "Residuals for Dane County Model")
+dane_r_p
+```
+
+* **Linearity:** The residuals do not show a curved pattern and appear randomly scattered around zero.
+* **Normality:** Most residuals cluster near zero with no extreme outliers.
+* **Constant Variance:** The spread remains consistent across years.
+
+**Milwaukee Residuals:**
+```{r}
+milwaukee_r_p <- ggplot(milwaukee %>% filter(!is.na(Temperature)), aes(Year, y = resid(model_milwaukee))) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  labs(title = "Residuals for Milwaukee Model")
+milwaukee_r_p
+```
+
+* **Linearity:** Residuals are scattered randomly around zero.
+* **Normality:** Residuals stay near zero with no extreme outliers.
+* **Constant Variance:** The vertical spread is stable across years.
+
+
+**Conclusion:** Regression assumptions appear satisfied for both models.
+
+## **3. Formal Test for Difference in Trends**
+To address the research question of whether the temperature change differs between the two counties, we fit an interaction model. We test the null hypothesis $H_0 : \beta_{Year:Milwaukee} = 0$ , which assumes the slope of the regression line is the same for both cities.
+
+```{r}
+# Interaction model to compare slopes
+model_interaction <- lm(Temperature ~ Year * City, data = combined)
+summary(model_interaction)$coefficients
+```
+
+The interaction term Year:CityMilwaukee represents the difference in the rate of temperature change between Milwaukee and Dane County.
+
+## **4. Confidence and Prediction Intervals**
+
+### **Confidence Intervals for Slope (Rate of Change)**
+```{r}
+# DANE
+se_d = summary(model_dane)$coefficients[2, 2] 
+n_d = nrow(dane %>% filter(!is.na(Temperature)))
+moe_d = qt(0.975,n_d-2)*se_d
+left_d = beta_1_hat_d - moe_d
+right_d = beta_1_hat_d + moe_d
+cat("Dane Slope 95% CI: [", left_d, ", ", right_d, "]\n")
+
+# MILWAUKEE
+se_m = summary(model_milwaukee)$coefficients[2, 2]
+n_m = nrow(milwaukee %>% filter(!is.na(Temperature)))
+moe_m = qt(0.975,n_m-2)*se_m
+left_m = beta_1_hat_m - moe_m
+right_m = beta_1_hat_m + moe_m
+cat("Milwaukee Slope 95% CI: [", left_m, ", ", right_m, "]\n")
+```
+
+### **Prediction Intervals (2020-2024)**
+```{r}
+# Predictions for Dane
+intervals_d = predict(model_dane, newdata = tibble(Year = 2020:2024), interval = "prediction")
+head(intervals_d)
+
+# Predictions for Milwaukee
+intervals_m = predict(model_milwaukee, newdata = tibble(Year = 2020:2024), interval = "prediction")
+head(intervals_m)
+```
+
+## **Discussion**
+### **Interpretation**
+The p-value for the interaction term in our combined model is approximately 0.13. This is greater than the standard significance level of 0.05. Consequently, we fail to reject the null hypothesis. <br>
+In non-statistical terms, this means that while Milwaukee is generally warmer than Dane County (as seen in the visualization), there is no statistically significant evidence that the rate of warming or cooling differs between the two counties. The climate in both the inland (Dane) and lakeshore (Milwaukee) areas has followed a statistically similar trend over the last 24 years. The "Lake Effect," while responsible for higher absolute temperatures in Milwaukee, does not appear to be insulating Milwaukee from the broader climatic changes affecting Dane County during this specific time period. <br>
+
+### **Shortcomings**
+Time Span: 24 years is a relatively short period for climate analysis. Short-term weather variability (like El Niño/La Niña cycles) can often mask true long-term climate trends.
+Missing Data: Data for the years 2002 and 2005 were missing from the source files. While the model can handle missing rows, having a complete time series would improve precision.
+Urban Heat Island: Both datasets represent urban centers. It is possible that urban development in both cities is driving temperature changes that confound the natural "lake effect" we attempted to isolate. <br>
+
+### **Future Research**
+Future research should expand the dataset to cover at least 50 to 100 years to better distinguish climate trends from annual weather noise. Additionally, including rural control sites for both counties would help isolate the true impact of Lake Michigan by removing the confounding variable of urbanization and heat islands.
